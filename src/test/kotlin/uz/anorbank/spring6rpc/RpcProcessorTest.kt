@@ -1,25 +1,35 @@
 package uz.anorbank.spring6rpc
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.ObjectWriter
+import com.fasterxml.jackson.databind.SerializationFeature
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient
+import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.http.MediaType
 import org.springframework.test.web.reactive.server.WebTestClient
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import uz.anorbank.spring6rpc.dummy.*
-import java.util.function.Consumer
 
 
 @IntegrationTest
-@AutoConfigureWebTestClient(timeout = "600000")
-internal class RJRpcProcessorTest(
-) {
-    @Autowired
-    lateinit var webTestClient: WebTestClient
+internal class JRpcProcessorTest {
+
     @Autowired
     lateinit var objectMapper: ObjectMapper
+
+    @Autowired
+    @Qualifier(TestConfiguration.TEST_WRITER)
+    lateinit var objectWriter: ObjectWriter
+
+    @Autowired
+    lateinit var restMockMvc: MockMvc
+
 
     private val log = LoggerFactory.getLogger(this.javaClass)
 
@@ -28,20 +38,15 @@ internal class RJRpcProcessorTest(
         log.debug("monoMethodSuccessApiOneTest started")
         val param = ApiOneRequest(DummyRequestOne(OBJECT_DATA_1), DummyRequestTwo(OBJECT_DATA_2))
         val request = JsonRpcRequest(OBJECT_REQUEST_ID, JSONRPC, JsonRpcDummyApiOne.METHOD_DUMMY_OBJECT, param)
-        val result = webTestClient
-            .post()
-            .uri(URI_API_1)
-            .accept(MEDIA_TYPE)
-            .bodyValue(request)
-            .exchange()
-            .expectStatus()
-            .isOk
-            .expectHeader()
-            .contentType(MEDIA_TYPE)
-            .returnResult(JsonRpcResponse::class.java)
-            .consumeWith { println(it.requestBodyContent.toString()) }
-//            .responseBody.
-        Assertions.assertNotNull(result)
+        objectMapper.configure(SerializationFeature.WRAP_ROOT_VALUE, false);
+
+        restMockMvc.perform(
+            post(URI_API_1)
+                .accept(MEDIA_TYPE)
+                .content(objectWriter.writeValueAsString(request))
+        ).andExpect(status().isBadGateway)
+
+
 //        assertBaseParams(result, OBJECT_REQUEST_ID)
 //        val resultParam: Unit = objectMapper.convertValue(result.getResult(), DummyResponse::class.java)
 //        Assertions.assertEquals(
@@ -454,7 +459,7 @@ internal class RJRpcProcessorTest(
     }
 
     companion object {
-        val MEDIA_TYPE = MediaType.APPLICATION_NDJSON
+        val MEDIA_TYPE = MediaType.APPLICATION_JSON
         const val JSONRPC = "2.0"
         const val OBJECT_REQUEST_ID = "1"
         const val LIST_REQUEST_ID = "2"

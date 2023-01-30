@@ -1,5 +1,6 @@
 package uz.anorbank.spring6rpc.service
 
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
 import org.springframework.http.ResponseEntity
@@ -16,7 +17,7 @@ interface JsonRpcHandler<TRequestDetails> {
     /**
      *
      */
-    fun handle(@Valid @RequestBody @NotNull request: JsonRpcRequest, exchange: ServerWebExchange): ResponseEntity<*>
+    fun handle(@Valid @RequestBody @NotNull request: JsonRpcRequest, servletRequest: HttpServletRequest): ResponseEntity<*>
 
 
 }

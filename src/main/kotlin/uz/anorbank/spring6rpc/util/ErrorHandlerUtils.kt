@@ -17,14 +17,14 @@ class ErrorHandlerUtils : InitializingBean {
 
     private val log = LoggerFactory.getLogger(this.javaClass)
 
-    fun buildResponse(request: JsonRpcRequest, code: Int, e: Throwable): JsonRpcResponse? {
+    fun buildResponse(request: JsonRpcRequest?, code: Int, e: Throwable): JsonRpcResponse? {
         log.trace("buildResponse started")
-        return JsonRpcResponse(request.id, request.jsonrpc, null, getError(e, code))
+        return JsonRpcResponse(request?.id, request?.jsonrpc ?: "2.0", null, getError(e, code))
     }
 
-    fun buildResponse(request: JsonRpcRequest, code: Int, e: Throwable, message: String): JsonRpcResponse? {
+    fun buildResponse(request: JsonRpcRequest?, code: Int, e: Throwable, message: String): JsonRpcResponse? {
         log.trace("buildResponse started")
-        return JsonRpcResponse(request.id, request.jsonrpc, null, getError(e, code, message))
+        return JsonRpcResponse(request?.id, request?.jsonrpc ?: "2.0", null, getError(e, code, message))
     }
 
     fun wrapResponse(response: JsonRpcResponse?): ResponseEntity<JsonRpcResponse?> {

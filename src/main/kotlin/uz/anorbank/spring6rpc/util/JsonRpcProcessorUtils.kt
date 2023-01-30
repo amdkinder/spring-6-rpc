@@ -11,11 +11,12 @@ import org.springframework.context.ApplicationContext
 import org.springframework.http.ResponseEntity
 import org.springframework.stereotype.Component
 import uz.anorbank.spring6rpc.annotation.*
+import uz.anorbank.spring6rpc.dummy.*
 import uz.anorbank.spring6rpc.exception.InvalidParamsException
 import uz.anorbank.spring6rpc.exception.InvalidWrapperException
 import uz.anorbank.spring6rpc.exception.JsonRpcVersionValidationException
 import uz.anorbank.spring6rpc.exception.MethodParamsMetaDataException
-import uz.anorbank.spring6rpc.dummy.*
+import uz.anorbank.spring6rpc.service.ErrorHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Parameter
@@ -91,6 +92,7 @@ class JsonRpcProcessorUtils(
             .map { getJsonRpcErrorInfo(it) }
     }
 
+
     fun getParamInfo(method: Method): List<JsonRpcParamInfo> {
         log.trace("getAnnotation started")
         return method.parameters
@@ -130,20 +132,26 @@ class JsonRpcProcessorUtils(
             .toTypedArray()
         val methodParams = jsonRpcServiceInfo.method!!.parameterTypes
         validateMethodParams(args, methodParams)
-        return jsonRpcServiceInfo.method!!.invoke(jsonRpcServiceInfo.instance, args)
+        return jsonRpcServiceInfo.method!!.invoke(jsonRpcServiceInfo.instance, *args)
     }
 
     @Throws(InvalidWrapperException::class)
     fun mapResult(
         request: JsonRpcRequest,
-        jsonRpcServiceInfo: JsonRpcServiceInfo,
+        jsonRpcServiceInfo: JsonRpcServiceInfo?,
         result: Any
     ): ResponseEntity<*> {
-        log.trace("mapResult started result of method : {}", jsonRpcServiceInfo.methodName)
+        log.trace("mapResult started result of method : {}", jsonRpcServiceInfo?.methodName)
         if (result is JsonRpcResponse)
-            return ResponseEntity.ok(result)
-        throw InvalidWrapperException()
+            ResponseEntity.ok(result)
+        val jsonRpcResponse = JsonRpcResponse(
+            id = request.id,
+            jsonrpc = JSON_RPC_VERSION,
+            result = result
+        )
+        return ResponseEntity.ok(jsonRpcResponse)
     }
+
 
     private fun getRpcImplTypes(): Set<Class<*>> {
         log.trace("getRpcImplTypes started")
@@ -156,6 +164,20 @@ class JsonRpcProcessorUtils(
         return Reflections(getConfigurationBuilder())
             .getSubTypesOf(JRpcClassMethod::class.java)
     }
+
+    fun getAllErrorHandlers(): List<ErrorHandler> {
+
+        return Reflections(
+            ConfigurationBuilder()
+                .setUrls(ClasspathHelper.forJavaClassPath())
+        )
+            .getSubTypesOf(ErrorHandler::class.java)
+            .filter { clazz -> clazz.enumConstants.isNotEmpty() }
+            .map { clazz -> clazz.enumConstants.toList() }
+            .flatten<ErrorHandler>()
+
+    }
+
 
     private fun getConfigurationBuilder(): ConfigurationBuilder {
         log.trace("getConfigurationBuilder started")
@@ -195,15 +217,6 @@ class JsonRpcProcessorUtils(
         if (args.size != methodParams.size) {
             log.warn("given parameters count not match to target method's. execution terminated")
             throw InvalidParamsException()
-        }
-        for (index in args.indices) {
-            if (args[index] != null && args[index]!!.javaClass != methodParams[index]) {
-                log.warn(
-                    "one of method params type is invalid. request arg - '{}' : method arg type - {}",
-                    args[index], methodParams[index]
-                )
-                throw InvalidParamsException()
-            }
         }
     }
 

@@ -13,5 +13,5 @@ interface ErrorHandler {
     /**
      *
      */
-    fun buildResponse(e: Exception, request: JsonRpcRequest): JsonRpcResponse
+    fun buildResponse(e: Exception, request: JsonRpcRequest?): JsonRpcResponse
 }

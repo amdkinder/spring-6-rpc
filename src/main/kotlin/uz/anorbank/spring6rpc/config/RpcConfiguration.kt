@@ -15,7 +15,7 @@ class RpcConfiguration {
     @Bean(OBJECT_MAPPER_BEAN_NAME)
     fun objectMapper(): ObjectMapper? {
         val objectMapper = ObjectMapper()
-        objectMapper.configure(SerializationFeature.WRITE_NULL_MAP_VALUES, false)
+//        objectMapper.configure(SerializationFeature.WRITE_NULL_MAP_VALUES, false)
         return objectMapper
     }
 

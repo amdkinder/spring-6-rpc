@@ -4,12 +4,12 @@ import com.fasterxml.jackson.databind.JsonMappingException
 import jakarta.validation.ConstraintViolationException
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import uz.anorbank.spring6rpc.dummy.JsonRpcRequest
+import uz.anorbank.spring6rpc.dummy.JsonRpcResponse
 import uz.anorbank.spring6rpc.exception.InvalidParamsException
 import uz.anorbank.spring6rpc.exception.InvalidWrapperException
 import uz.anorbank.spring6rpc.exception.JsonRpcVersionValidationException
 import uz.anorbank.spring6rpc.exception.MethodNotFoundException
-import uz.anorbank.spring6rpc.dummy.JsonRpcRequest
-import uz.anorbank.spring6rpc.dummy.JsonRpcResponse
 import uz.anorbank.spring6rpc.service.ErrorHandler
 import uz.anorbank.spring6rpc.util.ErrorHandlerUtils
 import kotlin.reflect.KClass
@@ -21,10 +21,7 @@ enum class ErrorEnum(
     private var code: Int = 0
 ) : ErrorHandler {
 
-    COMMON(
-        exception = Exception::class,
-        code = -32099
-    ),
+
     ARGS_VALIDATION(
         exception = ConstraintViolationException::class,
         "The JSON sent is not a valid Request object:",
@@ -50,15 +47,17 @@ enum class ErrorEnum(
     RPC_VERSION_VALIDATION(
         exception = JsonRpcVersionValidationException::class,
         code = -32600
-    )
-
-    ;
+    ),
+    COMMON(
+        exception = Exception::class,
+        code = -32099
+    );
 
     companion object {
         val log: Logger = LoggerFactory.getLogger(this::class.java)
     }
 
-    override fun buildResponse(e: Exception, request: JsonRpcRequest): JsonRpcResponse {
+    override fun buildResponse(e: Exception, request: JsonRpcRequest?): JsonRpcResponse {
         if (message != null)
             return ErrorHandlerUtils.instance!!.buildResponse(request, code, e, getMessage(e))!!
         return ErrorHandlerUtils.instance!!.buildResponse(request, code, e)!!
