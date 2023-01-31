@@ -1,8 +1,8 @@
 package uz.anorbank.spring6rpc.dummy
 
-interface JRpcClassMethod<TRequest, TResponse> {
-    fun invoke(params: TRequest): TResponse
-    fun getName(): String
+interface JRpcClassMethod<TResponse> {
+    fun invoke(params: Map<String, Any>): TResponse
+    fun getMethodName(): String
     fun getParams(): Map<String, Class<out Any>>
-    fun getUrl(): String
+    fun getServiceUri(): String
 }

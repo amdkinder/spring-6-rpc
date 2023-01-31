@@ -10,7 +10,7 @@ class RpcServiceMetaData(
     utils: JsonRpcProcessorUtils
 ) {
     private val log = LoggerFactory.getLogger(this.javaClass)
-    private val rpcInfoList: List<JsonRpcServiceInfo?> = utils.getRpcInfoList()
+    private val rpcInfoList: MutableList<JsonRpcServiceInfo?> = utils.getRpcInfoList().toMutableList().apply { addAll(utils.getJsonRpcInfoClassMethods()) }
     private val errorHandlers: List<ErrorHandler> = utils.getAllErrorHandlers().toList()
 
     fun getRpcInfoList(): List<JsonRpcServiceInfo?> {

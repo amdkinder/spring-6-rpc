@@ -24,8 +24,8 @@ import java.util.*
 
 @Component
 class JsonRpcProcessorUtils(
-    private val context: ApplicationContext,
-    private val objectMapper: ObjectMapper
+        private val context: ApplicationContext,
+        private val objectMapper: ObjectMapper
 
 ) {
 
@@ -49,18 +49,49 @@ class JsonRpcProcessorUtils(
     fun getRpcInfoList(): List<JsonRpcServiceInfo?> {
         log.trace("getRpcInfoList started")
         return getRpcImplTypes()
-            .map(this::getRpcInfoListByMethod)
-            .filter(Objects::nonNull)
-            .flatten()
+                .map(this::getRpcInfoListByMethod)
+                .filter(Objects::nonNull)
+                .flatten()
     }
 
     fun getRpcInfoListByMethod(service: Class<*>): List<JsonRpcServiceInfo?> {
         log.trace("getJsonRpcInfo started")
         val bean = context.getBean(service)
         return service.declaredMethods
-            .filter { it.getAnnotation(JRpcMethod::class.java) != null }
-            .map { getJsonRpcInfo(bean, it, service) }
-            .filter { Objects.nonNull(it) }
+                .filter { it.getAnnotation(JRpcMethod::class.java) != null }
+                .map { getJsonRpcInfo(bean, it, service) }
+                .filter { Objects.nonNull(it) }
+    }
+
+    fun getRpcInfoListByClassMethod(service: Class<out JRpcClassMethod<*>>): JsonRpcServiceInfo {
+        log.trace("getJsonRpcInfo started for method class")
+        val bean = context.getBean(service)
+        val method = service.declaredMethods.find { it.name == "invoke" }
+                ?: service.getDeclaredMethod("invoke", Map::class.java)
+        return getJsonRpcClassMethod(bean, method, service)
+    }
+
+    fun getJsonRpcClassMethod(bean: Any, method: Method, service: Class<out JRpcClassMethod<*>>): JsonRpcServiceInfo {
+        log.trace("getJsonRpcInfo class method started for bean with name : {}", bean.javaClass.simpleName)
+        val methodName = service
+                .getDeclaredMethod("getMethodName")
+                .invoke(bean) as String
+        val serviceUri = service
+                .getDeclaredMethod("getServiceUri")
+                .invoke(bean) as String
+        val params = (service
+                .getDeclaredMethod("getParams")
+                .invoke(bean) as Map<String, Class<*>>)
+                .map { (name, clazz) -> JsonRpcParamInfo(name = name, type = clazz, order = name) }
+        return JsonRpcServiceInfo(
+                uri = serviceUri,
+                instance = bean,
+                methodName = methodName,
+                method = method,
+                params = params,
+                type = JsonRpcServiceType.CLASS_METHOD
+        )
+
     }
 
     fun getJsonRpcInfo(bean: Any, method: Method, service: Class<*>): JsonRpcServiceInfo? {
@@ -74,42 +105,48 @@ class JsonRpcProcessorUtils(
         return when (methodAnnotation) {
             null -> null
             else -> JsonRpcServiceInfo(
-                uri = service.getAnnotation(JRpcService::class.java).value,
-                instance = bean,
-                methodName = methodAnnotation.value,
-                method = method,
-                params = params,
-                errors = errorInfos
+                    uri = service.getAnnotation(JRpcService::class.java).value,
+                    instance = bean,
+                    methodName = methodAnnotation.value,
+                    method = method,
+                    params = params,
+                    errors = errorInfos,
+                    type = JsonRpcServiceType.ANNOTATED
             )
         }
+    }
+
+    fun getJsonRpcInfoClassMethods(): List<JsonRpcServiceInfo?> {
+        return getAllRpcClassMethods()?.map { getRpcInfoListByClassMethod(it) } ?: listOf()
     }
 
     fun getErrorInfos(method: Method): List<JsonRpcErrorInfo> {
         log.trace("getErrorInfos started")
         val errors = method.getAnnotation(JRpcErrors::class.java)
-            ?: return EMPTY_ERROR_LIST
+                ?: return EMPTY_ERROR_LIST
         return errors.value
-            .map { getJsonRpcErrorInfo(it) }
+                .map { getJsonRpcErrorInfo(it) }
     }
 
 
     fun getParamInfo(method: Method): List<JsonRpcParamInfo> {
         log.trace("getAnnotation started")
         return method.parameters
-            .map {
-                JsonRpcParamInfo(
-                    name = getParamName(it),
-                    type = it.type,
-                    order = it.name
-                )
-            }
+                .map {
+                    JsonRpcParamInfo(
+                            name = getParamName(it),
+                            type = it.type,
+                            order = it.name
+                    )
+                }
     }
+
 
     fun isDesiredMethod(@NotNull request: JsonRpcRequest, rpcInfo: JsonRpcServiceInfo): Boolean {
         log.trace(
-            "isDesiredMethod started for request method : {}, system method : {}",
-            request.method,
-            rpcInfo.methodName
+                "isDesiredMethod started for request method : {}, system method : {}",
+                request.method,
+                rpcInfo.methodName
         )
         return rpcInfo.methodName.equals(request.method, true)
     }
@@ -117,37 +154,48 @@ class JsonRpcProcessorUtils(
     @Throws(IllegalAccessException::class, InvocationTargetException::class, InvalidParamsException::class)
     fun executeMethod(request: JsonRpcRequest, jsonRpcServiceInfo: JsonRpcServiceInfo): Any {
         log.trace(
-            "executeMethod started for method : {}, of type : {}",
-            jsonRpcServiceInfo.methodName,
-            (jsonRpcServiceInfo.instance!!)::class.simpleName
+                "executeMethod started for method : {}, of type : {}",
+                jsonRpcServiceInfo.methodName,
+                (jsonRpcServiceInfo.instance!!)::class.simpleName
         )
         val params = request.params as LinkedHashMap<*, *>
         if (params.size != jsonRpcServiceInfo.params?.size) {
             throw InvalidParamsException()
         }
-        val args = jsonRpcServiceInfo
-            .params!!
-            .sortedWith(Comparator.comparing { it!!.order!! })
-            .map { param -> getParam(params, param!!) }
-            .toTypedArray()
-        val methodParams = jsonRpcServiceInfo.method!!.parameterTypes
+        val args: Array<Any?> = jsonRpcServiceInfo
+                .params!!
+                .sortedWith(Comparator.comparing { it!!.order!! })
+                .map { param -> getParam(params, param!!) }
+                .toTypedArray()
+
+        val methodParams = jsonRpcServiceInfo.params!!.map { it!!.type!! }.toTypedArray()
+//                jsonRpcServiceInfo.method!!.parameterTypes
+
         validateMethodParams(args, methodParams)
-        return jsonRpcServiceInfo.method!!.invoke(jsonRpcServiceInfo.instance, *args)
+
+        jsonRpcServiceInfo
+                .params!!
+                .sortedWith(Comparator.comparing { it!!.order!! })
+                .map { params }
+        return when (jsonRpcServiceInfo.type) {
+            JsonRpcServiceType.CLASS_METHOD -> jsonRpcServiceInfo.method!!.invoke(jsonRpcServiceInfo.instance, params)
+            else -> jsonRpcServiceInfo.method!!.invoke(jsonRpcServiceInfo.instance, *args)
+        }
     }
 
     @Throws(InvalidWrapperException::class)
     fun mapResult(
-        request: JsonRpcRequest,
-        jsonRpcServiceInfo: JsonRpcServiceInfo?,
-        result: Any
+            request: JsonRpcRequest,
+            jsonRpcServiceInfo: JsonRpcServiceInfo?,
+            result: Any
     ): ResponseEntity<*> {
         log.trace("mapResult started result of method : {}", jsonRpcServiceInfo?.methodName)
         if (result is JsonRpcResponse)
             ResponseEntity.ok(result)
         val jsonRpcResponse = JsonRpcResponse(
-            id = request.id,
-            jsonrpc = JSON_RPC_VERSION,
-            result = result
+                id = request.id,
+                jsonrpc = JSON_RPC_VERSION,
+                result = result
         )
         return ResponseEntity.ok(jsonRpcResponse)
     }
@@ -156,43 +204,43 @@ class JsonRpcProcessorUtils(
     private fun getRpcImplTypes(): Set<Class<*>> {
         log.trace("getRpcImplTypes started")
         return Reflections(getConfigurationBuilder())
-            .getTypesAnnotatedWith(JRpcService::class.java)
+                .getTypesAnnotatedWith(JRpcService::class.java)
     }
 
-    private fun getRpcClassMethodTypes(): Set<Class<out JRpcClassMethod<*, *>>> {
-        log.trace("getRpcClassMethodTypes started")
-        return Reflections(getConfigurationBuilder())
-            .getSubTypesOf(JRpcClassMethod::class.java)
-    }
 
     fun getAllErrorHandlers(): List<ErrorHandler> {
-
         return Reflections(
-            ConfigurationBuilder()
-                .setUrls(ClasspathHelper.forJavaClassPath())
+                ConfigurationBuilder()
+                        .setUrls(ClasspathHelper.forJavaClassPath())
         )
-            .getSubTypesOf(ErrorHandler::class.java)
-            .filter { clazz -> clazz.enumConstants.isNotEmpty() }
-            .map { clazz -> clazz.enumConstants.toList() }
-            .flatten<ErrorHandler>()
+                .getSubTypesOf(ErrorHandler::class.java)
+                .filter { clazz -> clazz.enumConstants.isNotEmpty() }
+                .map { clazz -> clazz.enumConstants.toList() }
+                .flatten<ErrorHandler>()
 
+    }
+
+    fun getAllRpcClassMethods(): MutableSet<Class<out JRpcClassMethod<*>>>? {
+        return Reflections(
+                ConfigurationBuilder().setUrls(ClasspathHelper.forJavaClassPath()))
+                .getSubTypesOf(JRpcClassMethod::class.java)
     }
 
 
     private fun getConfigurationBuilder(): ConfigurationBuilder {
         log.trace("getConfigurationBuilder started")
         return ConfigurationBuilder()
-            .setScanners(Scanners.TypesAnnotated)
-            .setUrls(ClasspathHelper.forJavaClassPath())
+                .setScanners(Scanners.TypesAnnotated)
+                .setUrls(ClasspathHelper.forJavaClassPath())
     }
 
     private fun getJsonRpcErrorInfo(rpcError: JRpcError): JsonRpcErrorInfo {
         log.trace("getJsonRpcErrorInfo")
         return JsonRpcErrorInfo(
-            rpcError.exception,
-            rpcError.code,
-            getOptionalString(rpcError.message),
-            getOptionalString(rpcError.data)
+                rpcError.exception,
+                rpcError.code,
+                getOptionalString(rpcError.message),
+                getOptionalString(rpcError.data)
         )
     }
 
