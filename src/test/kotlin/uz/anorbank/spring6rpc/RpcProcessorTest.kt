@@ -8,9 +8,7 @@ import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.http.MediaType
-import org.springframework.test.web.reactive.server.WebTestClient
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -40,20 +38,22 @@ internal class JRpcProcessorTest {
         val request = JsonRpcRequest(OBJECT_REQUEST_ID, JSONRPC, JsonRpcDummyApiOne.METHOD_DUMMY_OBJECT, param)
         objectMapper.configure(SerializationFeature.WRAP_ROOT_VALUE, false);
 
-        restMockMvc.perform(
-            post(URI_API_1)
-                .accept(MEDIA_TYPE)
-                .content(objectWriter.writeValueAsString(request))
-        ).andExpect(status().isBadGateway)
+        val waitedResult = JsonRpcResponse(
+                id = OBJECT_REQUEST_ID,
+                jsonrpc = JSONRPC,
+                result = DummyResponse(DummyRequestOne(OBJECT_DATA_1).data + DummyRequestTwo(OBJECT_DATA_2).data, "SUCCESS")
+        )
 
+        val result = restMockMvc.perform(
+                post(URI_API_1)
+                        .contentType(MEDIA_TYPE)
+                        .content(objectWriter.writeValueAsString(request))
+        )
+                .andExpect(status().isOk)
+                .andExpect { it.response.contentAsString.equals(objectMapper.writeValueAsString(waitedResult)) }
+                .andReturn()
+        println(result.response.contentAsString)
 
-//        assertBaseParams(result, OBJECT_REQUEST_ID)
-//        val resultParam: Unit = objectMapper.convertValue(result.getResult(), DummyResponse::class.java)
-//        Assertions.assertEquals(
-//            param.getRequestOne().getData() + param.getRequestTwo().getData(),
-//            resultParam.getRequestData()
-//        )
-//        Assertions.assertEquals("SUCCESS", resultParam.getResult())
     }
 //
 //    @Test
@@ -443,23 +443,23 @@ internal class JRpcProcessorTest {
         val requests: ArrayList<JsonRpcRequest> = ArrayList<JsonRpcRequest>()
         for (i in 0 until GATLING_REQUESTS_COUNT) {
             val param = ApiOneRequest(
-                DummyRequestOne(if (isValidationCase) null else i.toString()),
-                DummyRequestTwo((i + 1).toString())
+                    DummyRequestOne(if (isValidationCase) null else i.toString()),
+                    DummyRequestTwo((i + 1).toString())
             )
             requests.add(
-                JsonRpcRequest(
-                    "$i",
-                    JSONRPC,
-                    if (isMonoCase) JsonRpcDummyApiOne.METHOD_DUMMY_OBJECT else JsonRpcDummyApiOne.METHOD_DUMMY_LIST,
-                    param
-                )
+                    JsonRpcRequest(
+                            "$i",
+                            JSONRPC,
+                            if (isMonoCase) JsonRpcDummyApiOne.METHOD_DUMMY_OBJECT else JsonRpcDummyApiOne.METHOD_DUMMY_LIST,
+                            param
+                    )
             )
         }
         return requests
     }
 
     companion object {
-        val MEDIA_TYPE = MediaType.APPLICATION_JSON
+        val MEDIA_TYPE = MediaType.APPLICATION_JSON_VALUE
         const val JSONRPC = "2.0"
         const val OBJECT_REQUEST_ID = "1"
         const val LIST_REQUEST_ID = "2"
