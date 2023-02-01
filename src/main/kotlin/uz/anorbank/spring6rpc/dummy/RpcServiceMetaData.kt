@@ -21,4 +21,8 @@ class RpcServiceMetaData(
     fun getAllErrorHandlers(): List<ErrorHandler> {
         return errorHandlers
     }
+
+    fun addRpcInfo(rpcList: List<JsonRpcServiceInfo> ) {
+        rpcInfoList.addAll(rpcList)
+    }
 }
